@@ -1,6 +1,8 @@
 #include <iostream>
+#include <gromacs/trajectoryanalysis.h>
+#include "assembly.h"
 
-int main() {
-    std::cout << "Hello, World!" << std::endl;
-    return 0;
+int main(int argc, char *argv[])
+{
+    return gmx::TrajectoryAnalysisCommandLineRunner::runAsMain<assembly>(argc,argv);
 }

@@ -7,25 +7,26 @@
 
 #include <gromacs/trajectoryanalysis.h>
 #include <iostream>
+#include <vector>
 
 using namespace gmx;
 
-class assembly : gmx::TrajectoryAnalysisModule {
+class assembly : public gmx::TrajectoryAnalysisModule {
 public:
     assembly();
 
     virtual void initOptions(IOptionsContainer *options,
-                             TrajectoryAnalysisSettings *settings);
+                             TrajectoryAnalysisSettings *settings) override;
 
     virtual void initAnalysis(const TrajectoryAnalysisSettings &settings,
-                              const TopologyInformation &top);
+                              const TopologyInformation &top) override;
 
     virtual void analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
-                              TrajectoryAnalysisModuleData *pdata);
+                              TrajectoryAnalysisModuleData *pdata) override;
 
-    virtual void finishAnalysis(int nframes);
+    virtual void finishAnalysis(int nframes) override;
 
-    virtual void writeOutput();
+    virtual void writeOutput() override;
 
 private:
 
@@ -53,6 +54,10 @@ private:
 
     // Number of molecules in this system
     int molCount_;
+
+    // Molecule ID -> atom ID mapping
+
+    std::vector<int> *idMap;
 
     Selection sel_;
     AnalysisNeighborhood nb_;
