@@ -57,7 +57,7 @@ private:
 
     // Molecule ID -> atom ID mapping
 
-    std::vector<int> *idMap;
+    std::vector<std::vector<int>> idMap;
 
     Selection sel_;
     AnalysisNeighborhood nb_;

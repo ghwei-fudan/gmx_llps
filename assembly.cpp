@@ -14,8 +14,8 @@ using namespace gmx;
 
 assembly::assembly() : cutoffSpace_(0.40)
 {
-    registerAnalysisDataset(&dataClusterCount_, "cluster count");
-    registerAnalysisDataset(&dataLargestCluster_, "largest cluster size");
+    registerAnalysisDataset(&dataClusterCount_, "clusterCount");
+    registerAnalysisDataset(&dataLargestCluster_, "clusterMax");
 }
 
 void assembly::initOptions(IOptionsContainer          *options,
@@ -59,6 +59,7 @@ void assembly::initOptions(IOptionsContainer          *options,
 
 void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
                             const TopologyInformation &top) {
+
     nb_.setCutoff(cutoffSpace_);
     dataLargestCluster_.setColumnCount(0, 1);
     dataClusterCount_.setColumnCount(0, 1);
@@ -89,12 +90,19 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
     this->atoms_ = top.topology()->atoms;
 
     sel_.initOriginalIdsToGroup(top_, INDEX_MOL);
-    molCount_ = sel_.mappedIds()[sel_.atomCount() - 1];
+
+    molCount_ = sel_.mappedIds()[sel_.atomCount() - 1] + 1;
     cout << "Total number of molecules in this system: " << molCount_ << endl;
 
     // Now we are going to generate "molecule ID -> atom ID" map
 
-    this->idMap = new vector<int>[molCount_];
+    // this->idMap = new vector<int>[molCount_];
+
+    for (int i = 0; i < molCount_; i++)
+    {
+        vector<int> tempVector;
+        idMap.insert(idMap.end(), tempVector);
+    }
 
     for(int i = 0; i < sel_.atomCount(); i++)
     {
@@ -105,22 +113,38 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
 
 void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
                             TrajectoryAnalysisModuleData *pdata) {
+
     AnalysisDataHandle dhClusterCount = pdata->dataHandle(dataClusterCount_);
     AnalysisDataHandle dhClusterSize = pdata->dataHandle(dataLargestCluster_);
     const Selection &sel = sel_;
 
+
     AnalysisNeighborhoodSearch nbsearch = nb_.initSearch(pbc, sel_);
 
+    //cout << "DEBUG: We've just initialed neighborhood searching" << endl;
+
     dhClusterCount.startFrame(frnr, fr.time);
+
+    //cout << "DEBUG: We've just started frame for dhClusterCount" << endl;
+
     dhClusterSize.startFrame(frnr, fr.time);
+
+    //cout << "DEBUG: We've just started frame for dhClusterSize" << endl;
 
     // We first create two vector containing molecules that have been / not have been mapped.
     vector<int> mappedMolecule;
     vector<int> unmappedMolecule;
     for (int i = 0; i < molCount_; i++) {
-        mappedMolecule.insert(unmappedMolecule.end(), i);
+        unmappedMolecule.insert(unmappedMolecule.end(), i);
     }
-
+/*
+    cout << "The unmapped map: "<< endl;
+    for (int i=0; i<unmappedMolecule.size(); i++)
+    {
+        cout << unmappedMolecule[i] << ',' ;
+    }
+    cout << endl;
+*/
     // We also create a cluster-vector containing vectors of molecule ids in this cluster.
     vector<vector<int>> clusterList;
 
@@ -134,7 +158,12 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
         // We create a vector containing only one molecule and a pointer to it.
         vector<int> tempCluster = {unmappedMolecule[0]};
 
+        //cout << "DEBUG: Now Process Molecule: " << tempCluster[0] << endl;
+
+
         unmappedMolecule.erase(unmappedMolecule.begin());
+        //cout << "DEBUG: The next will be:     " << unmappedMolecule[0] << endl;
+
         mappedMolecule.insert(mappedMolecule.end(), tempCluster[0]);
 
         int pointer_processing = 0;
@@ -149,14 +178,43 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
         while (!completed_nb) {
             bool foundNew = false;
 
+            //////////////////////////DEBUG/////////////////////////////
+            //cout << "DEBUG: We are in loop" << endl;
+
+            //cout << "DEBUG: The Molecule Number is :" << tempCluster[pointer_processing] << endl;
+
+            //cout << "DEBUG: The Atoms are :" ;
+            //for (int i : idMap[tempCluster[pointer_processing]]){
+            //    cout << i << ' ';
+            //}
+            //cout << endl;
+            //////////////////////////DEBUG/////////////////////////////
+
+
             for (int atomIndex : idMap[tempCluster[pointer_processing]]) {
+
+
+
                 AnalysisNeighborhoodPairSearch pairSearch = nbsearch.startPairSearch(
                         sel.coordinates()[atomIndex]
                 );
+
+                //////////////////////////DEBUG/////////////////////////////
+
+                //cout << "DEBUG: Now doing neighborhood searching for atom: " << atomIndex;
+                //cout << " with (x,y,z) of " << sel.coordinates()[atomIndex][0] << ", "  ;
+                //cout << sel.coordinates()[atomIndex][1] << ", " ;
+                //cout << sel.coordinates()[atomIndex][2] << endl;
+
+
+
+                //////////////////////////DEBUG/////////////////////////////
+
                 AnalysisNeighborhoodPair pair;
                 while (pairSearch.findNextPair(&pair)) {
                     if (find(tempCluster.begin(), tempCluster.end(), sel.mappedIds()[pair.refIndex()])
-                        != tempCluster.end()) {
+                        == tempCluster.end()) {
+
 
                         foundNew = true;
 
@@ -165,8 +223,31 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
                         // Now as we have assigned the cluster of refIndex, we delete it from
                         // unmapped molecule and insert it into mapped molecule
 
-                        unmappedMolecule.erase(find(
-                                tempCluster.begin(), tempCluster.end(), sel.mappedIds()[pair.refIndex()]));
+                        //cout << "DEBUG: Now found " << *find(
+                        //        tempCluster.begin(), tempCluster.end(), sel.mappedIds()[pair.refIndex()]) << endl;
+/*
+                        cout << "The unmapped map: "<< endl;
+                        for (int i=0; i<unmappedMolecule.size(); i++)
+                        {
+                            cout << unmappedMolecule[i] << ',' ;
+                        }
+                        cout << endl;
+*/
+                        //cout << "We are going to erase from unmapped list: " << sel.mappedIds()[pair.refIndex()] << endl;
+
+
+
+                        unmappedMolecule.erase(find(unmappedMolecule.begin(), unmappedMolecule.end(),
+                                sel.mappedIds()[pair.refIndex()]));
+
+                        /*
+                        cout << "The unmapped map: "<< endl;
+                        for (int i=0; i<unmappedMolecule.size(); i++)
+                        {
+                            cout << unmappedMolecule[i] << ',' ;
+                        }
+                        cout << endl << endl;
+*/
 
                         mappedMolecule.insert(mappedMolecule.end(), sel.mappedIds()[pair.refIndex()]);
                     }
@@ -193,6 +274,8 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     int max_cluster_size = 0;
 
+    //cout << "hhh" << endl;
+
     for (vector<int> cluster : clusterList) {
         max_cluster_size = static_cast<int>(cluster.size() > max_cluster_size ?
                                             cluster.size() : max_cluster_size);
@@ -200,6 +283,9 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     dhClusterCount.setPoint(0, clusterList.size());
     dhClusterSize.setPoint(0, max_cluster_size);
+
+    dhClusterCount.finishFrame();
+    dhClusterSize.finishFrame();
 
 }
 
