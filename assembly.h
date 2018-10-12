@@ -42,6 +42,9 @@ private:
     // in the largest cluster in a particular frame.
     std::string fnLargestCluster_;
 
+    // This is a PDB File containing the largest cluster.
+    std::string fnLargestClusterPDB_;
+
     // Input parameters
 
     // Cutoff for smallest number of molecules in a "Cluster"
@@ -49,6 +52,8 @@ private:
 
     // Cutoff for intra-cluster interactions
     double cutoffSpace_;
+
+    double time_pdb_;
 
     // Global parameters used in software
 

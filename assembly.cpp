@@ -7,6 +7,12 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <gromacs/fileio/pdbio.h>
+#include <gromacs/pbcutil/pbc.h>
+#include <gromacs/pbcutil/rmpbc.h>
+#include <gromacs/selection/nbsearch.h>
+
+
 
 using namespace std;
 using namespace gmx;
@@ -19,8 +25,7 @@ assembly::assembly() : cutoffSpace_(0.40)
 }
 
 void assembly::initOptions(IOptionsContainer          *options,
-                           TrajectoryAnalysisSettings *settings)
-{
+                           TrajectoryAnalysisSettings *settings) {
     static const char *const desc[] =
             {
                     "Assembly Analyzer by Yiming Tang @ Fudan.\n",
@@ -41,6 +46,11 @@ void assembly::initOptions(IOptionsContainer          *options,
                                .store(&fnLargestCluster_).defaultBasename("size")
                                .description("Size of the largest cluster as a function of time"));
 
+    options->addOption(FileNameOption("pdb")
+                               .filetype(eftPDB).outputFile()
+                               .store(&fnLargestClusterPDB_)
+                               .description("The Largest Cluster of the Last Frame"));
+
     options->addOption(SelectionOption("select")
                                .store(&sel_).required()
                                .description("Group that contain your molecules"));
@@ -52,6 +62,11 @@ void assembly::initOptions(IOptionsContainer          *options,
     options->addOption(DoubleOption("cutoff_space").store(&cutoffSpace_)
                                .defaultValue(0.4).required()
                                .description("Maximum atom-wise distance to insure an interaction"));
+
+    options->addOption(DoubleOption("pdb_time").timeValue().store(&time_pdb_)
+                               .description(
+                                       "Largest cluster of this time will be written to pdb if \"pdb\" specified."));
+
 
     settings->setFlag(TrajectoryAnalysisSettings::efRequireTop);
 }
@@ -137,6 +152,10 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     for (int i = 0; i < molCount_; i++) {
         unmappedMolecule.insert(unmappedMolecule.end(), i);
     }
+
+    unsigned long max_cluster_size = 0;
+    vector<int> maxCluster;
+
 /*
     cout << "The unmapped map: "<< endl;
     for (int i=0; i<unmappedMolecule.size(); i++)
@@ -194,7 +213,6 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
             for (int atomIndex : idMap[tempCluster[pointer_processing]]) {
 
 
-
                 AnalysisNeighborhoodPairSearch pairSearch = nbsearch.startPairSearch(
                         sel.coordinates()[atomIndex]
                 );
@@ -238,7 +256,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
 
                         unmappedMolecule.erase(find(unmappedMolecule.begin(), unmappedMolecule.end(),
-                                sel.mappedIds()[pair.refIndex()]));
+                                                    sel.mappedIds()[pair.refIndex()]));
 
                         /*
                         cout << "The unmapped map: "<< endl;
@@ -265,6 +283,11 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
         // We are now going to determine whether it is valid and put it into cluster list
         // if it is valid.
 
+        if (tempCluster.size() > max_cluster_size) {
+            max_cluster_size = tempCluster.size();
+            maxCluster = tempCluster;
+        }
+
         if (tempCluster.size() >= cutoffClusterSize_) {
             clusterList.insert(clusterList.end(), tempCluster);
         }
@@ -272,17 +295,188 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     }
 
-    int max_cluster_size = 0;
+
 
     //cout << "hhh" << endl;
 
-    for (vector<int> cluster : clusterList) {
-        max_cluster_size = static_cast<int>(cluster.size() > max_cluster_size ?
-                                            cluster.size() : max_cluster_size);
-    }
 
     dhClusterCount.setPoint(0, clusterList.size());
     dhClusterSize.setPoint(0, max_cluster_size);
+
+    // Now it is time to write pdb
+
+    if (!fnLargestClusterPDB_.empty() && fr.time == time_pdb_) {
+
+
+        ////////////////////// REMOVING PERIODIC BOUNDARY CONDITIONS /////////////////////////
+
+        // We first determine the number of atoms in this cluster.
+
+        int atomNumber = 0;
+        for(int moleculeIndex : maxCluster){
+            atomNumber += idMap[moleculeIndex].size();
+        }
+
+        cout << "Number of all atoms are: " << atomNumber << endl;
+
+        // We now initialize the atom coordinate list
+
+        rvec *tempClusterAtoms = new rvec[atomNumber];
+
+        atomNumber = 0;
+
+        for (int moleculeIndex : maxCluster) {
+            for (int atomIndex : idMap[moleculeIndex]) {
+                tempClusterAtoms[atomNumber][0] = sel.coordinates()[atomIndex][0];
+                tempClusterAtoms[atomNumber][1] = sel.coordinates()[atomIndex][1];
+                tempClusterAtoms[atomNumber][2] = sel.coordinates()[atomIndex][2];
+                atomNumber += 1;
+            }
+        }
+
+        const rvec *clusterAtoms = tempClusterAtoms;
+
+        cout << "Number of all atoms are: " << atomNumber << endl;
+
+        // We now initial a neighborhood searching based on the grid generated by the above coordinate list.
+
+        AnalysisNeighborhoodPositions nPLargestCluster(clusterAtoms, atomNumber);
+        AnalysisNeighborhood nbLargestCluster;
+        nbLargestCluster.setCutoff(static_cast<real>(cutoffSpace_));
+
+        AnalysisNeighborhoodSearch nbSearchCluster = nbLargestCluster.initSearch(pbc, nPLargestCluster);
+
+        // We now do neighborhood searching one by one and get the outcome coordinates.
+
+        rvec *outputClusterAtoms = new rvec[atomNumber];
+
+        outputClusterAtoms[0][0] = clusterAtoms[0][0];
+        outputClusterAtoms[0][1] = clusterAtoms[0][1];
+        outputClusterAtoms[0][2] = clusterAtoms[0][2];
+
+        vector<int> unmappedAtoms;
+        vector<int> mapped_unprocessedAtoms;
+        vector<int> mapped_processedAtoms;
+
+        for(int i=1; i<atomNumber; i++){
+            unmappedAtoms.insert(unmappedAtoms.end(), i);
+        }
+
+        mapped_unprocessedAtoms.insert(mapped_unprocessedAtoms.end(), 0);
+
+
+        while(!unmappedAtoms.empty())
+        {
+            int processingIndex = mapped_unprocessedAtoms[0];
+
+            // cout << "DEBUG: Now Processing: " << processingIndex << endl;
+
+            AnalysisNeighborhoodPairSearch pairSearchCluster = nbSearchCluster.startPairSearch(
+                    clusterAtoms[processingIndex]
+                    );
+
+            AnalysisNeighborhoodPair pairCluster;
+            while (pairSearchCluster.findNextPair(&pairCluster)) {
+
+                if(find(mapped_processedAtoms.begin(), mapped_processedAtoms.end(), pairCluster.refIndex())\
+                == mapped_processedAtoms.end()){
+
+                    // If in this condition, then the atom is not fully processed, which needs further processing.
+
+                    if(find(mapped_unprocessedAtoms.begin(), mapped_unprocessedAtoms.end(),pairCluster.refIndex())\
+                    == mapped_unprocessedAtoms.end()) {
+                        // If in this condition, then the atom has not been mapped. Now we map it.
+                        mapped_unprocessedAtoms.insert(mapped_unprocessedAtoms.end(), pairCluster.refIndex());
+                        unmappedAtoms.erase(find(unmappedAtoms.begin(), unmappedAtoms.end(), pairCluster.refIndex()));
+
+                        outputClusterAtoms[pairCluster.refIndex()][0] = outputClusterAtoms[processingIndex][0] +
+                                                                        pairCluster.dx()[0];
+                        outputClusterAtoms[pairCluster.refIndex()][1] = outputClusterAtoms[processingIndex][1] +
+                                                                        pairCluster.dx()[1];
+                        outputClusterAtoms[pairCluster.refIndex()][2] = outputClusterAtoms[processingIndex][2] +
+                                                                        pairCluster.dx()[2];
+                    }
+
+                    mapped_processedAtoms.insert(mapped_processedAtoms.end(), pairCluster.refIndex());
+                }
+
+            }
+            // Anyway now this atom is fully processed, so we move its position.
+            mapped_processedAtoms.insert(mapped_processedAtoms.end(), processingIndex);
+            mapped_unprocessedAtoms.erase(mapped_unprocessedAtoms.begin());
+
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+
+
+        //////////////////////////////// CENTERING THE CLUSTER ///////////////////////////////
+
+        real centroid_x = 0.0, centroid_y = 0.0, centroid_z = 0.0;
+
+        for(int i=0; i<atomNumber; i++){
+            centroid_x += outputClusterAtoms[i][0];
+            centroid_y += outputClusterAtoms[i][1];
+            centroid_z += outputClusterAtoms[i][2];
+        }
+
+        centroid_x /= atomNumber;
+        centroid_y /= atomNumber;
+        centroid_z /= atomNumber;
+
+        for(int i=0; i<atomNumber; i++){
+            outputClusterAtoms[i][0] -= centroid_x;
+            outputClusterAtoms[i][1] -= centroid_y;
+            outputClusterAtoms[i][2] -= centroid_z;
+        }
+
+
+        /////////////////////////////////////////////////////////////////////////////////////
+
+
+        // cout << endl << "Now We are going to write a pdb file to: " << fnLargestClusterPDB_ << endl;
+
+        FILE *fpPDB = fopen(fnLargestClusterPDB_.c_str(), "w");
+
+        // cout << "DEBUG: We've opened the file." << endl;
+
+        //gmx_write_pdb_box(fpPDB, pbc->ePBC, pbc->box);
+
+        // cout << "DEBUG: We've written pbc information." << endl;
+
+        int fragmentCount = 1;
+        int atomCount = 1;
+
+        // cout << "DEBUG: Residue Count: " << atoms_.resinfo->rtp << endl;
+
+        for (int moleculeIndex : maxCluster) {
+            for (int atomIndex : idMap[moleculeIndex]) {
+
+
+                gmx_fprintf_pdb_atomline(fpPDB, epdbATOM, atomCount, *(atoms_.atomname[atomIndex]), \
+                /*atoms_.pdbinfo->altloc*/ ' ', *(top_->atoms.resinfo[0].name), atoms_.resinfo->chainid, \
+                atoms_.atom[atomIndex].resind,
+                        /*atoms_.resinfo->nr,*/ (char) atoms_.resinfo->ic, \
+
+                                         outputClusterAtoms[atomCount - 1][0] * 10,
+                                         outputClusterAtoms[atomCount - 1][1] * 10,
+                                         outputClusterAtoms[atomCount - 1][2] * 10,
+                        /*
+                        sel.coordinates()[atomIndex][0]*10, sel.coordinates()[atomIndex][1]*10, \
+                        sel.coordinates()[atomIndex][2]*10, atoms_.pdbinfo->occup, atoms_.pdbinfo->bfac*/0, 0, \
+                *(atoms_.atomname[atomIndex]));
+                atomCount += 1;
+
+                //atoms_.pdbinfo->
+
+            }
+            fragmentCount += 1;
+        }
+
+        fclose(fpPDB);
+    }
+
+
 
     dhClusterCount.finishFrame();
     dhClusterSize.finishFrame();
