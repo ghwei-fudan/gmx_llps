@@ -55,12 +55,12 @@ void assembly::initOptions(IOptionsContainer          *options,
     settings->setHelpText(desc);
 
     options->addOption(FileNameOption("nb")
-                               .filetype(eftPlot).outputFile().required()
+                               .filetype(eftPlot).outputFile()/*.required()*/
                                .store(&fnClusterCount_).defaultBasename("number")
                                .description("Number of clusters as a function of time"));
 
     options->addOption(FileNameOption("sz")
-                               .filetype(eftPlot).outputFile().required()
+                               .filetype(eftPlot).outputFile()/*required()*/
                                .store(&fnLargestCluster_).defaultBasename("size")
                                .description("Size of the largest cluster as a function of time"));
 
