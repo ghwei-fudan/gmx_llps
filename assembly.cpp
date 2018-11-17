@@ -473,8 +473,9 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
             for (int atomIndex : idMap[moleculeIndex]) {
 
 
+
                 gmx_fprintf_pdb_atomline(fpPDB, epdbATOM, atomCount, *(atoms_.atomname[atomIndex]), \
-                /*atoms_.pdbinfo->altloc*/ ' ', *(top_->atoms.resinfo[0].name), atoms_.resinfo->chainid, \
+                /*atoms_.pdbinfo->altloc*/ ' ', *(top_->atoms.resinfo[atoms_.atom[atomIndex].resind].name), atoms_.resinfo->chainid, \
                 atoms_.atom[atomIndex].resind,
                         /*atoms_.resinfo->nr,*/ (char) atoms_.resinfo->ic, \
 
