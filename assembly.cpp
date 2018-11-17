@@ -122,7 +122,7 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
     this->top_ = top.topology();
     this->atoms_ = top.topology()->atoms;
 
-    sel_.initOriginalIdsToGroup(top_, INDEX_MOL);
+    sel_.initOriginalIdsToGroup(top.mtop(), INDEX_MOL);
 
     molCount_ = sel_.mappedIds()[sel_.atomCount() - 1] + 1;
     cout << "Total number of molecules in this system: " << molCount_ << endl;

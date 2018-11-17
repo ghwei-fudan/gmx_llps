@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.4.3)
 
-project(gmx_assembly CXX)
+project(template CXX)
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
@@ -15,6 +15,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # to match.
 option(GMX_DOUBLE "Use double precision" OFF)
 set(GMX_SUFFIX "" CACHE STRING "Suffix for the GROMACS installation to use (empty for default)")
+set(CMAKE_USE_RELATIVE_PATHS OFF)
 
 # This does not allow for a non-suffixed double-precision libgromacs, but
 # that should be rare enough for demonstration purposes.
