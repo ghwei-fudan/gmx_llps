@@ -42,6 +42,10 @@ private:
     // in the largest cluster in a particular frame.
     std::string fnLargestCluster_;
 
+    // Each lien of this output file is the number of molecules that
+    // are included in clusters in a particular frame.
+    std::string fnMoleculesInCluster_;
+
     // This is a PDB File containing the largest cluster.
     std::string fnLargestClusterPDB_;
 
@@ -69,6 +73,7 @@ private:
 
     AnalysisData dataClusterCount_;
     AnalysisData dataLargestCluster_;
+    AnalysisData dataMoleculesInCluster_;
 
     t_topology *top_;
     t_atoms atoms_;

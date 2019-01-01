@@ -1,3 +1,10 @@
+# Update 0.1
+
+With "-molnumber" the program prints number of molecules that 
+are included in clusters.
+
+
+# Initial Release
 
 # Introduction
 

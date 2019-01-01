@@ -22,6 +22,7 @@ assembly::assembly() : cutoffSpace_(0.40)
 {
     registerAnalysisDataset(&dataClusterCount_, "clusterCount");
     registerAnalysisDataset(&dataLargestCluster_, "clusterMax");
+    registerAnalysisDataset(&dataMoleculesInCluster_, "moleculesInCluster");
 }
 
 void assembly::initOptions(IOptionsContainer          *options,
@@ -64,6 +65,11 @@ void assembly::initOptions(IOptionsContainer          *options,
                                .store(&fnLargestCluster_).defaultBasename("size")
                                .description("Size of the largest cluster as a function of time"));
 
+    options->addOption(FileNameOption("molnumber")
+                               .filetype(eftPlot).outputFile()
+                               .store(&fnMoleculesInCluster_).defaultBasename("molecules_in_clusters")
+                               .description("Number of molecules that are included in clusters"));
+
     options->addOption(FileNameOption("pdb")
                                .filetype(eftPDB).outputFile()
                                .store(&fnLargestClusterPDB_)
@@ -93,9 +99,12 @@ void assembly::initOptions(IOptionsContainer          *options,
 void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
                             const TopologyInformation &top) {
 
+    //cout << "miao"<< endl;
+
     nb_.setCutoff(cutoffSpace_);
     dataLargestCluster_.setColumnCount(0, 1);
     dataClusterCount_.setColumnCount(0, 1);
+    dataMoleculesInCluster_.setColumnCount(0, 1);
 
     if (!fnClusterCount_.empty()) {
         AnalysisDataPlotModulePointer plotClusterCount(
@@ -117,6 +126,17 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
         plotLargestCluster->setXAxisIsTime();
         plotLargestCluster->setYLabel("Size");
         dataLargestCluster_.addModule(plotLargestCluster);
+    }
+
+    if(!fnMoleculesInCluster_.empty()) {
+        AnalysisDataPlotModulePointer plotMoleculesInCluster(
+                new AnalysisDataPlotModule(settings.plotSettings())
+        );
+        plotMoleculesInCluster->setFileName(fnMoleculesInCluster_);
+        plotMoleculesInCluster->setTitle("Number of Molecules in Clusters");
+        plotMoleculesInCluster->setXAxisIsTime();
+        plotMoleculesInCluster->setYLabel("Number of Molecules");
+        dataMoleculesInCluster_.addModule(plotMoleculesInCluster);
     }
 
     this->top_ = top.topology();
@@ -147,8 +167,20 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
 void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
                             TrajectoryAnalysisModuleData *pdata) {
 
+    //cout << "We are analyzing Frames" << endl;
+
     AnalysisDataHandle dhClusterCount = pdata->dataHandle(dataClusterCount_);
+
+    //cout << "DEBUG: We've just initialed datahandle for cluster count" << endl;
+
     AnalysisDataHandle dhClusterSize = pdata->dataHandle(dataLargestCluster_);
+
+    //cout << "DEBUG: We've just initialed datahandle for largest cluster" << endl;
+
+    AnalysisDataHandle dhMoleculesInCluster = pdata->dataHandle(dataMoleculesInCluster_);
+
+    //cout << "DEBUG: We've just initialed datahandle for molecules in cluster" << endl;
+
     const Selection &sel = sel_;
 
 
@@ -164,6 +196,10 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     //cout << "DEBUG: We've just started frame for dhClusterSize" << endl;
 
+    dhMoleculesInCluster.startFrame(frnr, fr.time);
+
+    //cout << "DEBUG: We've just started frame for dhMoleculesInCluster" << endl;
+
     // We first create two vector containing molecules that have been / not have been mapped.
     vector<int> mappedMolecule;
     vector<int> unmappedMolecule;
@@ -172,6 +208,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     }
 
     unsigned long max_cluster_size = 0;
+    unsigned long molecules_in_clusters = 0;
     vector<int> maxCluster;
 
 /*
@@ -308,6 +345,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
         if (tempCluster.size() >= cutoffClusterSize_) {
             clusterList.insert(clusterList.end(), tempCluster);
+            molecules_in_clusters += tempCluster.size();
         }
 
 
@@ -320,6 +358,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     dhClusterCount.setPoint(0, clusterList.size());
     dhClusterSize.setPoint(0, max_cluster_size);
+    dhMoleculesInCluster.setPoint(0, molecules_in_clusters);
 
     // Now it is time to write pdb
 
@@ -502,6 +541,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     dhClusterCount.finishFrame();
     dhClusterSize.finishFrame();
+    dhMoleculesInCluster.finishFrame();
 
 }
 
