@@ -109,7 +109,7 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
     //cout << "miao"<< endl;
 
     nb_.setCutoff(cutoffSpace_);
-    dataLiquidity_.setColumnCount(0, 2);
+    dataLiquidity_.setColumnCount(0, 4);
     //cout << dataLiquidity_.dataSetCount();
     dataLargestCluster_.setColumnCount(0, 1);
     //cout << dataLiquidity_.columnCount(0);
@@ -126,6 +126,11 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
         plotLiquidity->setTitle("Fraction of preservation");
         plotLiquidity->setXAxisIsTime();
         plotLiquidity->setYLabel("Fraction");
+        plotLiquidity->appendLegend("Fraction of preservation");
+        plotLiquidity->appendLegend("Fraction of cluster growth");
+        plotLiquidity->appendLegend("Fraction of cluster shrink");
+        plotLiquidity->appendLegend("Fraction of aggregation");
+        plotLiquidity->setYFormat(1, 5);
         dataLiquidity_.addModule(plotLiquidity);
     }
 
@@ -408,14 +413,18 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
         if(this->time_last_frame_ == -1 )
         {
             dhLiquidity.setPoint(0, 0);
-            dhLiquidity.setPoint(1, 0);
+            dhLiquidity.setPoint(1, float(cluster_this_frame.size()) / this->molCount_);
+            dhLiquidity.setPoint(2, 0);
+            dhLiquidity.setPoint(3, float(cluster_this_frame.size()) / this->molCount_);
         }
         else
         {
             if(this->cluster_last_frame_.size() == 0)
             {
                 dhLiquidity.setPoint(0, 0);
-                dhLiquidity.setPoint(1, fr.time - this->time_last_frame_);
+                dhLiquidity.setPoint(1, float(cluster_this_frame.size()) / this->molCount_);
+                dhLiquidity.setPoint(2, 0);
+                dhLiquidity.setPoint(3, float(cluster_this_frame.size()) / this->molCount_);
             }
             else
             {
@@ -432,7 +441,9 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
                 cluster_intersection.resize(it - cluster_intersection.begin());
 
                 dhLiquidity.setPoint(0, float(cluster_intersection.size()) / float(cluster_last_frame_.size()));
-                dhLiquidity.setPoint(1, fr.time - this->time_last_frame_);
+                dhLiquidity.setPoint(1, float(cluster_this_frame.size() - cluster_intersection.size()) / this->molCount_ );
+                dhLiquidity.setPoint(2, float(cluster_last_frame_.size() - cluster_intersection.size()) / this->molCount_);
+                dhLiquidity.setPoint(3, float(cluster_this_frame.size()) / this->molCount_);
             }
         }
 
