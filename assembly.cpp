@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <set>
 #include <gromacs/fileio/pdbio.h>
 #include <gromacs/pbcutil/pbc.h>
 #include <gromacs/pbcutil/rmpbc.h>
@@ -23,6 +24,7 @@ assembly::assembly() : cutoffSpace_(0.40)
     registerAnalysisDataset(&dataClusterCount_, "clusterCount");
     registerAnalysisDataset(&dataLargestCluster_, "clusterMax");
     registerAnalysisDataset(&dataMoleculesInCluster_, "moleculesInCluster");
+    registerAnalysisDataset(&dataLiquidity_, "liquidity");
 }
 
 void assembly::initOptions(IOptionsContainer          *options,
@@ -75,6 +77,11 @@ void assembly::initOptions(IOptionsContainer          *options,
                                .store(&fnLargestClusterPDB_)
                                .description("The Largest Cluster of the Last Frame"));
 
+    options->addOption(FileNameOption("liquidity")
+                               .filetype(eftPlot).outputFile()
+                               .store(&fnLiquidity_)
+                               .description("Fraction of aggregated molecules in last frame that remain aggregated in this frame."));
+
     options->addOption(SelectionOption("select")
                                .store(&sel_).required()
                                .description("Group that contain your molecules"));
@@ -102,9 +109,25 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
     //cout << "miao"<< endl;
 
     nb_.setCutoff(cutoffSpace_);
+    dataLiquidity_.setColumnCount(0, 2);
+    //cout << dataLiquidity_.dataSetCount();
     dataLargestCluster_.setColumnCount(0, 1);
+    //cout << dataLiquidity_.columnCount(0);
     dataClusterCount_.setColumnCount(0, 1);
     dataMoleculesInCluster_.setColumnCount(0, 1);
+
+
+    if(!fnLiquidity_.empty()){
+        AnalysisDataPlotModulePointer plotLiquidity(
+                new AnalysisDataPlotModule(settings.plotSettings())
+                );
+        this->time_last_frame_ = -1;
+        plotLiquidity->setFileName(fnLiquidity_);
+        plotLiquidity->setTitle("Fraction of preservation");
+        plotLiquidity->setXAxisIsTime();
+        plotLiquidity->setYLabel("Fraction");
+        dataLiquidity_.addModule(plotLiquidity);
+    }
 
     if (!fnClusterCount_.empty()) {
         AnalysisDataPlotModulePointer plotClusterCount(
@@ -162,6 +185,10 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
         this->idMap[sel_.mappedIds()[i]].insert(this->idMap[sel_.mappedIds()[i]].end(), i);
     }
 
+    //cout << "DEBUG: Column count for dataset 0 in liquidity is:" << dataLiquidity_.columnCount(0) << endl;
+    //cout << "We've finished initializing." << endl;
+
+
 }
 
 void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
@@ -177,9 +204,15 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     //cout << "DEBUG: We've just initialed datahandle for largest cluster" << endl;
 
+    AnalysisDataHandle dhLiquidity = pdata->dataHandle(dataLiquidity_);
+
+    //cout << "DEBUG: We've just initialed datahandle for liquidity" << endl;
+
     AnalysisDataHandle dhMoleculesInCluster = pdata->dataHandle(dataMoleculesInCluster_);
 
     //cout << "DEBUG: We've just initialed datahandle for molecules in cluster" << endl;
+
+
 
     const Selection &sel = sel_;
 
@@ -197,6 +230,8 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     //cout << "DEBUG: We've just started frame for dhClusterSize" << endl;
 
     dhMoleculesInCluster.startFrame(frnr, fr.time);
+
+    dhLiquidity.startFrame(frnr, fr.time);
 
     //cout << "DEBUG: We've just started frame for dhMoleculesInCluster" << endl;
 
@@ -228,6 +263,11 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     // "unmappedMolecule", it is not wise to use for-loop. Instead we use a while-
     // loop.
     //
+
+    // We now create a set that contains MOL ID of aggregated molecules
+
+    set<int> cluster_this_frame;
+
     while (!unmappedMolecule.empty()) {
         // We create a vector containing only one molecule and a pointer to it.
         vector<int> tempCluster = {unmappedMolecule[0]};
@@ -292,6 +332,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
                         foundNew = true;
 
                         tempCluster.insert(tempCluster.end(), sel.mappedIds()[pair.refIndex()]);
+                        cluster_this_frame.insert(sel.mappedIds()[pair.refIndex()]);
 
                         // Now as we have assigned the cluster of refIndex, we delete it from
                         // unmapped molecule and insert it into mapped molecule
@@ -359,6 +400,47 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     dhClusterCount.setPoint(0, clusterList.size());
     dhClusterSize.setPoint(0, max_cluster_size);
     dhMoleculesInCluster.setPoint(0, molecules_in_clusters);
+
+    // Now it is time to calculate liquidity
+
+    if(!fnLiquidity_.empty()){
+
+        if(this->time_last_frame_ == -1 )
+        {
+            dhLiquidity.setPoint(0, 0);
+            dhLiquidity.setPoint(1, 0);
+        }
+        else
+        {
+            if(this->cluster_last_frame_.size() == 0)
+            {
+                dhLiquidity.setPoint(0, 0);
+                dhLiquidity.setPoint(1, fr.time - this->time_last_frame_);
+            }
+            else
+            {
+                set<int> intersection;
+                set<int>::iterator p;
+
+                std::vector<int> cluster_intersection(this->molCount_);
+
+                std::vector<int>::iterator it;
+
+                it = std::set_intersection(this->cluster_last_frame_.begin(), this->cluster_last_frame_.end(),
+                                           cluster_this_frame.begin(), cluster_this_frame.end(), cluster_intersection.begin());
+
+                cluster_intersection.resize(it - cluster_intersection.begin());
+
+                dhLiquidity.setPoint(0, float(cluster_intersection.size()) / float(cluster_last_frame_.size()));
+                dhLiquidity.setPoint(1, fr.time - this->time_last_frame_);
+            }
+        }
+
+        this->time_last_frame_ = fr.time;
+        this->cluster_last_frame_ = cluster_this_frame;
+
+    }
+
 
     // Now it is time to write pdb
 
@@ -542,6 +624,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     dhClusterCount.finishFrame();
     dhClusterSize.finishFrame();
     dhMoleculesInCluster.finishFrame();
+    dhLiquidity.finishFrame();
 
 }
 

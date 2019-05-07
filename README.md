@@ -1,7 +1,14 @@
-# Update 0.1
+# Update 0.1: Fraction of aggregation
 
 With "-molnumber" the program prints number of molecules that 
 are included in clusters.
+
+# Update 0.2: Liquidity
+
+This program now calculates the liquidity, defined by the 
+fraction of aggregated molecules that are still aggregated
+in the next frame. Use '-liquidity' flag!
+
 
 
 # Initial Release

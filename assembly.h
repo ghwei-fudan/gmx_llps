@@ -8,6 +8,7 @@
 #include <gromacs/trajectoryanalysis.h>
 #include <iostream>
 #include <vector>
+#include <set>
 
 using namespace gmx;
 
@@ -49,6 +50,15 @@ private:
     // This is a PDB File containing the largest cluster.
     std::string fnLargestClusterPDB_;
 
+    // This file contains the liquidity of each frame
+    // defined by fraction of aggregated molecules in last frame that remain aggregated in this frame.
+    std::string fnLiquidity_;
+
+    // These variables are for use of liquidity only, which only work under serial operations.
+
+    std::set<int> cluster_last_frame_;
+    float time_last_frame_;
+
     // Input parameters
 
     // Cutoff for smallest number of molecules in a "Cluster"
@@ -74,6 +84,7 @@ private:
     AnalysisData dataClusterCount_;
     AnalysisData dataLargestCluster_;
     AnalysisData dataMoleculesInCluster_;
+    AnalysisData dataLiquidity_;
 
     t_topology *top_;
     t_atoms atoms_;
