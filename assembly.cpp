@@ -130,7 +130,7 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
         plotLiquidity->appendLegend("Fraction of cluster growth");
         plotLiquidity->appendLegend("Fraction of cluster shrink");
         plotLiquidity->appendLegend("Fraction of aggregation");
-        plotLiquidity->setYFormat(1, 5);
+        plotLiquidity->setYFormat(1, 7);
         dataLiquidity_.addModule(plotLiquidity);
     }
 
