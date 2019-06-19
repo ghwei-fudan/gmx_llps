@@ -9,6 +9,9 @@ This program now calculates the liquidity, defined by the
 fraction of aggregated molecules that are still aggregated
 in the next frame. Use '-liquidity' flag!
 
+# Update 0.3: Density
+
+This program now calculates the density of aggregated and solute state. Use "-density" and "-cutoff_multi" (optional) flags.
 
 
 # Initial Release

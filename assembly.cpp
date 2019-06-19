@@ -25,6 +25,7 @@ assembly::assembly() : cutoffSpace_(0.40)
     registerAnalysisDataset(&dataLargestCluster_, "clusterMax");
     registerAnalysisDataset(&dataMoleculesInCluster_, "moleculesInCluster");
     registerAnalysisDataset(&dataLiquidity_, "liquidity");
+    registerAnalysisDataset(&dataDensity_, "density");
 }
 
 void assembly::initOptions(IOptionsContainer          *options,
@@ -82,6 +83,15 @@ void assembly::initOptions(IOptionsContainer          *options,
                                .store(&fnLiquidity_)
                                .description("Fraction of aggregated molecules in last frame that remain aggregated in this frame."));
 
+    options->addOption(FileNameOption("density")
+                               .filetype(eftPlot).outputFile()
+                               .store(&fnDensity_)
+                               .description("Density of aggregated / dispersed phase"));
+
+    options->addOption(DoubleOption("cutoff_multi")
+                               .store(&density_nb_multiplier_).defaultValue(2).required()
+                               .description("Radius of Density Probe devided by cutoff_space"));
+
     options->addOption(SelectionOption("select")
                                .store(&sel_).required()
                                .description("Group that contain your molecules"));
@@ -109,12 +119,14 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
     //cout << "miao"<< endl;
 
     nb_.setCutoff(cutoffSpace_);
+    nbDensity_.setCutoff(cutoffSpace_ * density_nb_multiplier_);
     dataLiquidity_.setColumnCount(0, 4);
     //cout << dataLiquidity_.dataSetCount();
     dataLargestCluster_.setColumnCount(0, 1);
     //cout << dataLiquidity_.columnCount(0);
     dataClusterCount_.setColumnCount(0, 1);
     dataMoleculesInCluster_.setColumnCount(0, 1);
+    dataDensity_.setColumnCount(0, 2);
 
 
     if(!fnLiquidity_.empty()){
@@ -167,6 +179,18 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
         dataMoleculesInCluster_.addModule(plotMoleculesInCluster);
     }
 
+    if(!fnDensity_.empty())
+    {
+        AnalysisDataPlotModulePointer plotDensity(
+                new AnalysisDataPlotModule(settings.plotSettings())
+                );
+        plotDensity->setFileName(fnDensity_);
+        plotDensity->setTitle("Density");
+        plotDensity->setXAxisIsTime();
+        plotDensity->setYLabel("Density");
+        dataDensity_.addModule(plotDensity);
+    }
+
     this->top_ = top.topology();
     this->atoms_ = top.topology()->atoms;
 
@@ -217,10 +241,11 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
     //cout << "DEBUG: We've just initialed datahandle for molecules in cluster" << endl;
 
+    AnalysisDataHandle dhDensity = pdata->dataHandle(dataDensity_);
+
 
 
     const Selection &sel = sel_;
-
 
     AnalysisNeighborhoodSearch nbsearch = nb_.initSearch(pbc, sel_);
 
@@ -237,6 +262,8 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     dhMoleculesInCluster.startFrame(frnr, fr.time);
 
     dhLiquidity.startFrame(frnr, fr.time);
+
+    dhDensity.startFrame(frnr, fr.time);
 
     //cout << "DEBUG: We've just started frame for dhMoleculesInCluster" << endl;
 
@@ -451,6 +478,86 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
         this->cluster_last_frame_ = cluster_this_frame;
 
     }
+
+    // Now let's calculate density. This usually takes time.
+
+    if(!fnDensity_.empty()) {
+        /// First we get list of aggregated atoms. These will serve as reference points for building nbsearch mesh.
+        /// We also calculate mass here.
+
+        long double aggregated_mass = 0;
+        long double dispersed_mass = 0;
+
+        std::vector<RVec> aggregated_atom;
+
+        gmx::ArrayRef<float const[3]>::iterator iter_coordinate;
+        gmx::ArrayRef<const int>::iterator iter_index;
+        gmx::ArrayRef<const float>::iterator iter_mass;
+
+        for (iter_coordinate = sel.coordinates().begin(), iter_index = sel.atomIndices().begin(), iter_mass = sel.masses().begin();
+             iter_coordinate != sel.coordinates().end() && iter_index != sel.atomIndices().end() &&
+             iter_mass != sel.masses().end();
+             ++iter_coordinate, ++iter_index, ++iter_mass) {
+            if (find(cluster_this_frame.begin(), cluster_this_frame.end(),
+                     sel.mappedIds()[*iter_index]) != cluster_this_frame.end()) {
+                aggregated_atom.insert(aggregated_atom.end(), *iter_coordinate);
+                aggregated_mass += *iter_mass;
+            } else {
+                dispersed_mass += *iter_mass;
+            }
+        }
+
+        /// We now initialize the nbsearch algorithm
+
+        const std::vector<RVec> const_aggregated_atom = aggregated_atom;
+        const AnalysisNeighborhoodPositions aggregated_positions(const_aggregated_atom);
+        AnalysisNeighborhoodSearch nbDensitySearch = nbDensity_.initSearch(pbc, aggregated_positions);
+
+        // We now start searching to get volume informations.
+
+        double aggregated_point_number = 0;
+        double dispersed_point_number = 0;
+
+        cerr << "DEBUG: box vector is " << pbc->box[0][0] << ", " << pbc->box[1][1] << ", " << pbc->box[2][2] << endl;
+
+        for (real ix = 0; ix < pbc->box[0][0]; ix += 0.1) {
+            for (real iy = 0; iy < pbc->box[1][1]; iy += 0.1) {
+                for (real iz = 0; iz < pbc->box[2][2]; iz += 0.1) {
+                    const rvec test_position = {ix, iy, iz};
+                    AnalysisNeighborhoodPairSearch pairDensitySearch = nbDensitySearch.startPairSearch(test_position);
+                    AnalysisNeighborhoodPair pair;
+                    if (pairDensitySearch.findNextPair(&pair)) {
+                        aggregated_point_number += 1;
+                    } else {
+                        dispersed_point_number += 1;
+                    }
+                }
+            }
+        }
+
+        cout << "Point Number: " << aggregated_point_number << ", " << dispersed_point_number << endl;
+
+        double aggregated_volume =
+                aggregated_point_number / 1000;
+        double dispersed_volume =
+                dispersed_point_number / 1000;
+
+        // Now we calculate density
+
+        cout << "Mass:    " << aggregated_mass << ", " << dispersed_mass << endl;
+        cout << "Volume:  " << aggregated_volume << ", " << dispersed_volume << endl;
+        cout << "Density: " << aggregated_mass / aggregated_volume / (0.602) << ", " << dispersed_mass / dispersed_volume / (0.602) << endl;
+
+        dhDensity.setPoint(0, (real)(aggregated_mass / aggregated_volume / 0.602));
+        dhDensity.setPoint(1, (real)(dispersed_mass / dispersed_volume / 0.602));
+        dhDensity.finishFrame();
+    }
+
+
+
+
+
+
 
 
     // Now it is time to write pdb

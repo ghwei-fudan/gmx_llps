@@ -59,6 +59,10 @@ private:
     std::set<int> cluster_last_frame_;
     float time_last_frame_;
 
+    // This file contains density for aggregated and dispersed phases
+
+    std::string fnDensity_;
+
     // Input parameters
 
     // Cutoff for smallest number of molecules in a "Cluster"
@@ -80,11 +84,14 @@ private:
 
     Selection sel_;
     AnalysisNeighborhood nb_;
+    AnalysisNeighborhood nbDensity_;
+    double density_nb_multiplier_;
 
     AnalysisData dataClusterCount_;
     AnalysisData dataLargestCluster_;
     AnalysisData dataMoleculesInCluster_;
     AnalysisData dataLiquidity_;
+    AnalysisData dataDensity_;
 
     t_topology *top_;
     t_atoms atoms_;
