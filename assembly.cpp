@@ -120,7 +120,7 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
 
     nb_.setCutoff(cutoffSpace_);
     nbDensity_.setCutoff(cutoffSpace_ * density_nb_multiplier_);
-    dataLiquidity_.setColumnCount(0, 4);
+    dataLiquidity_.setColumnCount(0, 5);
     //cout << dataLiquidity_.dataSetCount();
     dataLargestCluster_.setColumnCount(0, 1);
     //cout << dataLiquidity_.columnCount(0);
@@ -142,6 +142,7 @@ void assembly::initAnalysis(const TrajectoryAnalysisSettings &settings,
         plotLiquidity->appendLegend("Fraction of cluster growth");
         plotLiquidity->appendLegend("Fraction of cluster shrink");
         plotLiquidity->appendLegend("Fraction of aggregation");
+        plotLiquidity->appendLegend("Preservation of contacts");
         plotLiquidity->setYFormat(1, 7);
         dataLiquidity_.addModule(plotLiquidity);
     }
@@ -299,10 +300,14 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     // We now create a set that contains MOL ID of aggregated molecules
 
     set<int> cluster_this_frame;
+    set<pair<int,int>> interaction_pairs;
+    set<pair<int,int>> interaction_pairs_within_one_cluster;
 
     while (!unmappedMolecule.empty()) {
         // We create a vector containing only one molecule and a pointer to it.
         vector<int> tempCluster = {unmappedMolecule[0]};
+
+        interaction_pairs_within_one_cluster.clear();
 
         //cout << "DEBUG: Now Process Molecule: " << tempCluster[0] << endl;
 
@@ -355,8 +360,29 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
                 //////////////////////////DEBUG/////////////////////////////
 
+
+
                 AnalysisNeighborhoodPair pair;
+
+                std::pair<int,int> temp_pair;
+
+
+
                 while (pairSearch.findNextPair(&pair)) {
+
+                    if(sel.mappedIds()[pair.refIndex()] < sel.mappedIds()[atomIndex])
+                    {
+                        temp_pair.first = sel.mappedIds()[pair.refIndex()];
+                        temp_pair.second = sel.mappedIds()[atomIndex];
+                    }
+                    else
+                    {
+                        temp_pair.first = sel.mappedIds()[atomIndex];
+                        temp_pair.second = sel.mappedIds()[pair.refIndex()];
+                    }
+
+                    interaction_pairs_within_one_cluster.insert(temp_pair);
+
                     if (find(tempCluster.begin(), tempCluster.end(), sel.mappedIds()[pair.refIndex()])
                         == tempCluster.end()) {
 
@@ -419,6 +445,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
         if (tempCluster.size() >= cutoffClusterSize_) {
             clusterList.insert(clusterList.end(), tempCluster);
             molecules_in_clusters += tempCluster.size();
+            interaction_pairs.insert(interaction_pairs_within_one_cluster.begin(), interaction_pairs_within_one_cluster.end());
         }
 
 
@@ -443,6 +470,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
             dhLiquidity.setPoint(1, float(cluster_this_frame.size()) / this->molCount_);
             dhLiquidity.setPoint(2, 0);
             dhLiquidity.setPoint(3, float(cluster_this_frame.size()) / this->molCount_);
+            dhLiquidity.setPoint(4, 0);
         }
         else
         {
@@ -453,10 +481,14 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
                 dhLiquidity.setPoint(2, 0);
                 dhLiquidity.setPoint(3, float(cluster_this_frame.size()) / this->molCount_);
             }
+            if(this->interaction_pairs_last_frame_.size() == 0)
+            {
+                dhLiquidity.setPoint(4, 0);
+            }
             else
             {
-                set<int> intersection;
-                set<int>::iterator p;
+                //set<int> intersection;
+                //set<int>::iterator p;
 
                 std::vector<int> cluster_intersection(this->molCount_);
 
@@ -471,11 +503,27 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
                 dhLiquidity.setPoint(1, float(cluster_this_frame.size() - cluster_intersection.size()) / this->molCount_ );
                 dhLiquidity.setPoint(2, float(cluster_last_frame_.size() - cluster_intersection.size()) / this->molCount_);
                 dhLiquidity.setPoint(3, float(cluster_this_frame.size()) / this->molCount_);
+
+                std::vector<std::pair<int,int>> intersection_interactions_pairs((int)max(interaction_pairs.size(), interaction_pairs_last_frame_.size()));
+                std::vector<std::pair<int,int>>::iterator it_interactions_pairs;
+
+                it_interactions_pairs = std::set_intersection(this->interaction_pairs_last_frame_.begin(),
+                        this->interaction_pairs_last_frame_.end(), interaction_pairs.begin(), interaction_pairs.end(),
+                        intersection_interactions_pairs.begin());
+
+                intersection_interactions_pairs.resize(it_interactions_pairs - intersection_interactions_pairs.begin());
+
+                dhLiquidity.setPoint(4, float(intersection_interactions_pairs.size()) / interaction_pairs_last_frame_.size());
+
+
             }
         }
 
+
+
         this->time_last_frame_ = fr.time;
         this->cluster_last_frame_ = cluster_this_frame;
+        this->interaction_pairs_last_frame_ = interaction_pairs;
 
     }
 
@@ -518,7 +566,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
         double aggregated_point_number = 0;
         double dispersed_point_number = 0;
 
-        cerr << "DEBUG: box vector is " << pbc->box[0][0] << ", " << pbc->box[1][1] << ", " << pbc->box[2][2] << endl;
+        //cerr << "DEBUG: box vector is " << pbc->box[0][0] << ", " << pbc->box[1][1] << ", " << pbc->box[2][2] << endl;
 
         for (real ix = 0; ix < pbc->box[0][0]; ix += 0.1) {
             for (real iy = 0; iy < pbc->box[1][1]; iy += 0.1) {
@@ -535,7 +583,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
             }
         }
 
-        cout << "Point Number: " << aggregated_point_number << ", " << dispersed_point_number << endl;
+        //cout << "Point Number: " << aggregated_point_number << ", " << dispersed_point_number << endl;
 
         double aggregated_volume =
                 aggregated_point_number / 1000;
@@ -544,13 +592,13 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
         // Now we calculate density
 
-        cout << "Mass:    " << aggregated_mass << ", " << dispersed_mass << endl;
-        cout << "Volume:  " << aggregated_volume << ", " << dispersed_volume << endl;
-        cout << "Density: " << aggregated_mass / aggregated_volume / (0.602) << ", " << dispersed_mass / dispersed_volume / (0.602) << endl;
+        //cout << "Mass:    " << aggregated_mass << ", " << dispersed_mass << endl;
+        //cout << "Volume:  " << aggregated_volume << ", " << dispersed_volume << endl;
+        //cout << "Density: " << aggregated_mass / aggregated_volume / (0.602) << ", " << dispersed_mass / dispersed_volume / (0.602) << endl;
 
         dhDensity.setPoint(0, (real)(aggregated_mass / aggregated_volume / 0.602));
         dhDensity.setPoint(1, (real)(dispersed_mass / dispersed_volume / 0.602));
-        dhDensity.finishFrame();
+
     }
 
 
@@ -743,6 +791,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
     dhClusterSize.finishFrame();
     dhMoleculesInCluster.finishFrame();
     dhLiquidity.finishFrame();
+    dhDensity.finishFrame();
 
 }
 

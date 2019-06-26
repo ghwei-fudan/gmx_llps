@@ -57,6 +57,7 @@ private:
     // These variables are for use of liquidity only, which only work under serial operations.
 
     std::set<int> cluster_last_frame_;
+    std::set<std::pair<int,int>> interaction_pairs_last_frame_;
     float time_last_frame_;
 
     // This file contains density for aggregated and dispersed phases
