@@ -645,7 +645,7 @@ void assembly::analyzeFrame(int frnr, const t_trxframe &fr, t_pbc *pbc,
 
         for(auto tempCluster : clusterList) {
 
-            if (not write_all_clusters_ and not writen_largest_cluster) {
+            if (not write_all_clusters_ and writen_largest_cluster) {
                 break;
             }
 
