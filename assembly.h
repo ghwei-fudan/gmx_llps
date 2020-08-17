@@ -73,6 +73,7 @@ private:
     double cutoffSpace_;
 
     double time_pdb_;
+    bool write_all_clusters_;
 
     // Global parameters used in software
 
