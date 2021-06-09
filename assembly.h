@@ -50,6 +50,9 @@ private:
     // This is a PDB File containing the largest cluster.
     std::string fnLargestClusterPDB_;
 
+    // This is a PDB File containing all molecules with the largest cluster centered.
+    std::string fnAllMoleculesPDB_;
+
     // This file contains the liquidity of each frame
     // defined by fraction of aggregated molecules in last frame that remain aggregated in this frame.
     std::string fnLiquidity_;
