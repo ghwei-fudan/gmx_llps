@@ -1,3 +1,10 @@
+# Citation
+
+Please cite the following literature:
+
+Tang et al., Prediction and characterization of liquid-liquid phase separation of minimalistic peptides, Cell Reports Physical Science (2021), https://doi.org/10.1016/j.xcrp.2021.100579
+
+
 # Update 0.1: Fraction of aggregation
 
 With "-molnumber" the program prints number of molecules that 
@@ -58,10 +65,3 @@ Periodic boundary condition of this cluster is well-treated to
 avoid across-boundary instances and the aggregate is put at 
 the center of simulation box.
 
-
-
-
-# Further Notice
-
-This program will be further modified without notice at need of my own academic researches. ",
-If you have further question, feel free to contact tym@tymworld.com"
